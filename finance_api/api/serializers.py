@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from ..models import Household, HouseholdMember
+from ..models import Household, HouseholdMember, Category
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -52,3 +52,10 @@ class AddMemberSerializer(serializers.Serializer):
         if not User.objects.filter(username=value).exists():
             raise serializers.ValidationError(f"User '{value}' does not exist.")
         return value
+    
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ('id', 'household', 'name', 'color', 'icon')
+        read_only_fields = ('id', 'is_default')

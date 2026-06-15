@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
 
+
 class Household(models.Model):
     CYCLE_CHOICES = [
         ('CALENDAR_MONTH', 'Standard Calendar Month (1st to end)'),
