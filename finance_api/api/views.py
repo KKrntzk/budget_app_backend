@@ -95,15 +95,28 @@ class HouseholdViewSet(viewsets.ModelViewSet):
         HouseholdMember.objects.create(user=target_user, household=household, role='MEMBER')
         return Response({"message": f"User '{target_user.username}' added."}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='categories')
-    def get_categories(self, request, pk=None):
+    @action(detail=True, methods=['get', 'post'], url_path='categories')
+    def manage_categories(self, request, pk=None):
         """
-        EXAKT WAS DU WOLLTEST:
-        GET /api/households/<id>/categories/
-        Lists all categories belonging specifically to this household.
+        GET  /api/households/<id>/categories/ -> Lists all categories for this household.
+        POST /api/households/<id>/categories/ -> Creates a new custom category for this household.
         """
+
         household = self.get_object() 
-        categories = Category.objects.filter(household=household)
-        serializer = CategorySerializer(categories, many=True)
-        return Response(serializer.get_serializer_class() if hasattr(serializer, 'get_serializer_class') else serializer.data, status=status.HTTP_200_OK)
+
+        if request.method == 'GET':
+            categories = Category.objects.filter(household=household)
+            serializer = CategorySerializer(categories, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        elif request.method == 'POST':
+
+            serializer = CategorySerializer(data=request.data)
+            
+            if serializer.is_valid():
+
+                serializer.save(household=household)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
