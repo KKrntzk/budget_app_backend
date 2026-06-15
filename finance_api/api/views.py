@@ -1,12 +1,23 @@
-from rest_framework import generics, permissions
+from rest_framework.views import APIView
+from rest_framework import generics, permissions, status, viewsets, mixins
 from rest_framework.response import Response
-from rest_framework import status, viewsets
-from django.contrib.auth.models import User
-from .serializers import RegisterSerializer, HouseholdSerializer, CategorySerializer, InviteSerializer
-from ..models import Household, HouseholdMember, Category
-from .permissions import IsHouseholdMember, IsHouseholdAdminOrReadOnly
 from rest_framework.decorators import action
-from rest_framework import mixins
+from django.contrib.auth.models import User
+from django.db.models import Q
+
+from .serializers import (
+    RegisterSerializer, 
+    HouseholdSerializer, 
+    CategorySerializer, 
+    InviteSerializer,
+    HouseholdSettingsSerializer
+)
+from finance_api.models import Household, HouseholdMember, Category
+from finance_api.api.permissions import IsHouseholdMember, IsHouseholdAdminOrReadOnly
+
+from rest_framework.settings import api_settings
+print(f"DEBUG: EXCEPTION_HANDLER ist vom Typ {type(api_settings.EXCEPTION_HANDLER)}")
+print(f"DEBUG: Der Wert ist: {api_settings.EXCEPTION_HANDLER}")
 
 class RegisterView(generics.CreateAPIView):
     """
@@ -145,6 +156,74 @@ class HouseholdViewSet(viewsets.ModelViewSet):
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    
+    @action(
+        detail=True, 
+        methods=['get', 'patch'], 
+        url_path='settings',
+        permission_classes=[permissions.IsAuthenticated, IsHouseholdAdminOrReadOnly]
+    )
+    def update_household_settings(self, request, pk=None):
+        household = self.get_object()
+
+        if request.method == 'GET':
+            serializer = HouseholdSettingsSerializer(household)
+            return Response(serializer.data)
+
+        if request.method == 'PATCH':
+            serializer = HouseholdSettingsSerializer(household, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+
+    @action(
+        detail=True, 
+        methods=['patch'], 
+        url_path='members/(?P<username>[^/.]+)',
+        permission_classes=[permissions.IsAuthenticated, IsHouseholdAdminOrReadOnly]
+    )
+    def update_member_role(self, request, pk=None, username=None):
+        """
+        PATCH /api/households/<pk>/members/<username>/
+        Ändert die Rolle eines Members basierend auf dem Usernamen.
+        """
+        household = self.get_object()
+        
+        try:
+            member = HouseholdMember.objects.get(
+                user__username=username, 
+                household=household
+            )
+        except HouseholdMember.DoesNotExist:
+            return Response(
+                {"detail": f"User '{username}' is not a member of this household."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        new_role = request.data.get('role')
+        if new_role not in ['ADMIN', 'MEMBER']:
+            return Response(
+                {"detail": "Invalid role. Choose 'ADMIN' or 'MEMBER'."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if member.user == request.user and new_role == 'MEMBER':
+            return Response(
+                {"detail": "You cannot demote yourself from ADMIN to MEMBER."}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        member.role = new_role
+        member.save()
+
+        return Response(
+            {"message": f"User '{username}' is now {new_role}."}, 
+            status=status.HTTP_200_OK
+        )
+
 
 class CategoryViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """

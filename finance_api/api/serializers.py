@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from ..models import Household, HouseholdMember, Category
+from finance_api.models import Household, HouseholdMember, Category
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -51,3 +51,8 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = ('id', 'household', 'name', 'color', 'icon')
         read_only_fields = ('id', 'is_default')
+
+class HouseholdSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Household
+        fields = ('split_mode_enabled', 'billing_cycle_type', 'payday_start')
