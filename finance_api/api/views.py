@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from .serializers import RegisterSerializer, HouseholdSerializer
 from ..models import Household, HouseholdMember
 from .permissions import IsHouseholdMember
+from rest_framework.decorators import action
 
 class RegisterView(generics.CreateAPIView):
     """
@@ -53,4 +54,42 @@ class HouseholdViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             household=household,
             role='ADMIN'
+        )
+    
+    @action(detail=True, methods=['post'], url_path='add-member')
+    def add_member(self, request, pk=None):
+        """
+        Endpoint: POST /api/households/<id>/add-member/
+        Allows a household ADMIN to add another user to the household.
+        """
+        household = self.get_object()
+       
+        current_member_status = HouseholdMember.objects.filter(user=request.user, household=household).first()
+        if not current_member_status or current_member_status.role != 'ADMIN':
+            return Response(
+                {"detail": "You do not have permission to add members. Only Admins can do this."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = AddMemberSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        target_user = User.objects.get(username=serializer.validated_data['username'])
+
+        if HouseholdMember.objects.filter(user=target_user, household=household).exists():
+            return Response(
+                {"detail": f"User '{target_user.username}' is already a member of this household."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        HouseholdMember.objects.create(
+            user=target_user,
+            household=household,
+            role='MEMBER' 
+        )
+
+        return Response(
+            {"message": f"User '{target_user.username}' was successfully added to the household."},
+            status=status.HTTP_200_OK
         )
