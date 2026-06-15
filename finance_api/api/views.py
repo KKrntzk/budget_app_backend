@@ -4,8 +4,9 @@ from rest_framework import status, viewsets
 from django.contrib.auth.models import User
 from .serializers import RegisterSerializer, HouseholdSerializer, AddMemberSerializer, CategorySerializer
 from ..models import Household, HouseholdMember, Category
-from .permissions import IsHouseholdMember
+from .permissions import IsHouseholdMember, IsHouseholdAdminOrReadOnly
 from rest_framework.decorators import action
+from rest_framework import mixins
 
 class RegisterView(generics.CreateAPIView):
     """
@@ -35,7 +36,7 @@ class HouseholdViewSet(viewsets.ModelViewSet):
     A ViewSet that handles all Household operations and nested Categories.
     """
     serializer_class = HouseholdSerializer
-    permission_classes = [permissions.IsAuthenticated, IsHouseholdMember]
+    permission_classes = [permissions.IsAuthenticated, IsHouseholdAdminOrReadOnly]
 
     def get_queryset(self):
         """
@@ -120,3 +121,16 @@ class HouseholdViewSet(viewsets.ModelViewSet):
             
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class CategoryViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    """
+    Handles ONLY updating (PATCH) and deleting (DELETE) individual categories via /api/categories/<id>/
+    """
+    serializer_class = CategorySerializer
+    permission_classes = [permissions.IsAuthenticated, IsHouseholdMember]
+
+    def get_queryset(self):
+        """
+        SECURITY: A user can only access a category if they are a member 
+        of the household that the category belongs to.
+        """
+        return Category.objects.filter(household__members=self.request.user)
