@@ -2,7 +2,7 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from django.contrib.auth.models import User
-from .serializers import RegisterSerializer, HouseholdSerializer
+from .serializers import RegisterSerializer, HouseholdSerializer, AddMemberSerializer
 from ..models import Household, HouseholdMember
 from .permissions import IsHouseholdMember
 from rest_framework.decorators import action
