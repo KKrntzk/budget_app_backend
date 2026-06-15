@@ -42,16 +42,8 @@ class HouseholdSerializer(serializers.ModelSerializer):
                 return member.role
         return None
     
-class AddMemberSerializer(serializers.Serializer):
-    username = serializers.CharField()
-
-    def validate_username(self, value):
-        """
-        Check if the user exists in our database.
-        """
-        if not User.objects.filter(username=value).exists():
-            raise serializers.ValidationError(f"User '{value}' does not exist.")
-        return value
+class InviteSerializer(serializers.Serializer):
+    identifier = serializers.CharField(required=True)
     
 
 class CategorySerializer(serializers.ModelSerializer):

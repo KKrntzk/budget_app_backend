@@ -2,7 +2,7 @@ from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework import status, viewsets
 from django.contrib.auth.models import User
-from .serializers import RegisterSerializer, HouseholdSerializer, AddMemberSerializer, CategorySerializer
+from .serializers import RegisterSerializer, HouseholdSerializer, CategorySerializer, InviteSerializer
 from ..models import Household, HouseholdMember, Category
 from .permissions import IsHouseholdMember, IsHouseholdAdminOrReadOnly
 from rest_framework.decorators import action
@@ -75,26 +75,51 @@ class HouseholdViewSet(viewsets.ModelViewSet):
                 icon=cat['icon']
             )
 
-    @action(detail=True, methods=['post'], url_path='add-member')
-    def add_member(self, request, pk=None):
+    @action(
+        detail=True, 
+        methods=['post'], 
+        url_path='invite', 
+        permission_classes=[permissions.IsAuthenticated, IsHouseholdMember]
+    )
+    def invite_member(self, request, pk=None):
         """
-        POST /api/households/<id>/add-member/
+        POST /api/households/<id>/invite/
+        Invites a user to the household using EITHER their username OR their email.
+        Accessible by both ADMINs and MEMBERs.
         """
         household = self.get_object()
-        current_member_status = HouseholdMember.objects.filter(user=request.user, household=household).first()
-        if not current_member_status or current_member_status.role != 'ADMIN':
-            return Response({"detail": "Only Admins can do this."}, status=status.HTTP_403_FORBIDDEN)
-
-        serializer = AddMemberSerializer(data=request.data)
+        
+        serializer = InviteSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
-        target_user = User.objects.get(username=serializer.validated_data['username'])
+        identifier = serializer.validated_data['identifier']
+        
+        from django.db.models import Q
+        target_user = User.objects.filter(Q(email=identifier) | Q(username=identifier)).first()
+        
+        if not target_user:
+            return Response(
+                {"detail": f"No user found with username or email '{identifier}'."}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
         if HouseholdMember.objects.filter(user=target_user, household=household).exists():
-            return Response({"detail": "User is already a member."}, status=status.HTTP_400_BAD_REQUEST)
-
-        HouseholdMember.objects.create(user=target_user, household=household, role='MEMBER')
-        return Response({"message": f"User '{target_user.username}' added."}, status=status.HTTP_200_OK)
+            return Response(
+                {"detail": "This user is already a member of this household."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        HouseholdMember.objects.create(
+            user=target_user, 
+            household=household, 
+            role='MEMBER'
+        )
+        
+        return Response(
+            {"message": f"User '{target_user.username}' successfully added to the household."}, 
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['get', 'post'], url_path='categories')
     def manage_categories(self, request, pk=None):
