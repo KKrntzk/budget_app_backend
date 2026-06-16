@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from finance_api.models import Household, HouseholdMember, Category
+from finance_api.models import Household, HouseholdMember, Category, Income, Transaction
+from django.db.models import Q
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
@@ -56,3 +57,71 @@ class HouseholdSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Household
         fields = ('split_mode_enabled', 'billing_cycle_type', 'payday_start')
+
+class IncomeSerializer(serializers.ModelSerializer):
+    username = serializers.ReadOnlyField(source='user.username')
+
+    class Meta:
+        model = Income
+        fields = ['id', 'username', 'title', 'amount', 'is_recurring', 'date']
+        read_only_fields = ['username']
+
+class TransactionSerializer(serializers.ModelSerializer):
+    paid_by_username = serializers.ReadOnlyField(source='paid_by.username')
+    
+    split_with = serializers.SlugRelatedField(
+        many=True,
+        queryset=User.objects.all(),
+        slug_field='username',
+        required=False
+    )
+
+    category = serializers.SlugRelatedField(
+        slug_field='name', 
+        queryset=Category.objects.all(), 
+        required=False, 
+        allow_null=True
+    )
+
+    class Meta:
+        model = Transaction
+        fields = '__all__'
+        read_only_fields = ['household', 'paid_by']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        view = self.context.get('view')
+        if view and hasattr(view, 'get_object'):
+            try:
+                household = view.get_object()
+                self.fields['category'].queryset = Category.objects.filter(
+                    Q(household=household) | Q(household__isnull=True)
+                )
+            except:
+                pass 
+
+    def create(self, validated_data):
+        split_with_users = validated_data.pop('split_with', [])
+        transaction = Transaction.objects.create(**validated_data)
+        transaction.split_with.set(split_with_users)
+        return transaction
+    
+    def validate_split_with(self, value):
+        view = self.context.get('view')
+        if view and hasattr(view, 'get_object'):
+            household = view.get_object()
+            for user in value:
+                if not household.members.filter(id=user.id).exists():
+                    raise serializers.ValidationError(
+                        f"User '{user.username}' is not a member of this household."
+                    )
+        return value
+    
+    def validate_category(self, value):
+        if value:
+            view = self.context.get('view')
+            if view and hasattr(view, 'get_object'):
+                household = view.get_object()
+                if value.household is not None and value.household != household:
+                    raise serializers.ValidationError("Diese Kategorie gehört nicht zu diesem Haushalt.")
+        return value

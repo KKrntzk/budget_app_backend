@@ -4,15 +4,18 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.contrib.auth.models import User
 from django.db.models import Q
+from django.db.models import Sum
 
 from .serializers import (
     RegisterSerializer, 
     HouseholdSerializer, 
     CategorySerializer, 
     InviteSerializer,
-    HouseholdSettingsSerializer
+    HouseholdSettingsSerializer, 
+    IncomeSerializer,
+    TransactionSerializer
 )
-from finance_api.models import Household, HouseholdMember, Category
+from finance_api.models import Household, HouseholdMember, Category, Transaction
 from finance_api.api.permissions import IsHouseholdMember, IsHouseholdAdminOrReadOnly
 
 from rest_framework.settings import api_settings
@@ -223,7 +226,60 @@ class HouseholdViewSet(viewsets.ModelViewSet):
             {"message": f"User '{username}' is now {new_role}."}, 
             status=status.HTTP_200_OK
         )
+    
+    @action(
+        detail=True, 
+        methods=['get', 'post'], 
+        url_path='incomes',
+        permission_classes=[permissions.IsAuthenticated, IsHouseholdMember]
+    )
+    def incomes(self, request, pk=None):
+        household = self.get_object()
 
+        if request.method == 'GET':
+            incomes = household.incomes.all()
+            serializer = IncomeSerializer(incomes, many=True)
+            return Response(serializer.data)
+
+        if request.method == 'POST':
+            serializer = IncomeSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save(household=household, user=request.user)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    @action(
+        detail=True, 
+        methods=['get', 'post'], 
+        url_path='transactions',
+        permission_classes=[permissions.IsAuthenticated, IsHouseholdMember]
+    )
+    def transactions(self, request, pk=None):
+        household = self.get_object()
+
+        if request.method == 'GET':
+            transactions = household.transactions.all()
+            serializer = TransactionSerializer(transactions, many=True)
+            return Response(serializer.data)
+        
+        if request.method == 'POST':
+            serializer = TransactionSerializer(data=request.data, context={'view': self})
+            if serializer.is_valid():
+                transaction = serializer.save(household=household, paid_by=request.user)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    @action(detail=True, methods=['get'])
+    def category_stats(self, request, pk=None):
+        household = self.get_object()
+    
+        stats = household.transactions.filter(
+            transaction_type='EXPENSE'
+        ).values('category__name', 'category__icon', 'category__color').annotate(
+            total_spent=Sum('amount')
+        )
+    
+        return Response(stats)
 
 class CategoryViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     """
@@ -238,3 +294,13 @@ class CategoryViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewset
         of the household that the category belongs to.
         """
         return Category.objects.filter(household__members=self.request.user)
+
+class TransactionViewSet(mixins.RetrieveModelMixin, 
+                         mixins.UpdateModelMixin, 
+                         mixins.DestroyModelMixin, 
+                         viewsets.GenericViewSet):
+    serializer_class = TransactionSerializer
+    permission_classes = [permissions.IsAuthenticated, IsHouseholdMember]
+
+    def get_queryset(self):
+        return Transaction.objects.filter(household__members=self.request.user)
