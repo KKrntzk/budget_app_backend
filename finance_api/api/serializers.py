@@ -10,6 +10,7 @@ from finance_api.models import (
     SavingsGoal,
 )
 from django.db.models import Q
+from decimal import Decimal
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -166,6 +167,8 @@ class BudgetSerializer(serializers.ModelSerializer):
 
 
 class SavingsGoalSerializer(serializers.ModelSerializer):
+    remaining_amount = serializers.SerializerMethodField()
+
     class Meta:
         model = SavingsGoal
         fields = [
@@ -175,5 +178,10 @@ class SavingsGoalSerializer(serializers.ModelSerializer):
             "current_amount",
             "target_date",
             "is_completed",
+            "remaining_amount",
         ]
-        read_only_fields = ["current_amount", "is_completed"]
+        read_only_fields = ["current_amount", "is_completed", "remaining_amount"]
+
+    def get_remaining_amount(self, obj):
+        remaining = obj.target_amount - obj.current_amount
+        return max(Decimal("0.00"), remaining)

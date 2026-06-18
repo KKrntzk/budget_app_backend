@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.db.models import Sum
+from decimal import Decimal
 
 from .serializers import (
     RegisterSerializer,
@@ -16,6 +17,7 @@ from .serializers import (
     IncomeSerializer,
     TransactionSerializer,
     BudgetSerializer,
+    SavingsGoalSerializer,
 )
 from finance_api.models import Household, HouseholdMember, Category, Transaction
 from finance_api.api.permissions import IsHouseholdMember, IsHouseholdAdminOrReadOnly
